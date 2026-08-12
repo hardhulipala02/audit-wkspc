@@ -4,7 +4,12 @@ export type AgentStepType =
   | "redline_proposal"
   | "summary";
 
-export type AgentStepStatus = "success" | "error" | "running" | "pending";
+export type AgentStepStatus =
+  | "success"
+  | "completed"
+  | "error"
+  | "running"
+  | "pending";
 
 export type JsonSchemaPropertyType =
   | "string"
@@ -51,6 +56,7 @@ export interface AgentStep {
   redlineIds?: string[];
   timestamp: string;
   durationMs: number;
+  confidence: number;
 }
 
 export type RedlineSeverity = "critical" | "high" | "medium" | "low";
@@ -79,6 +85,16 @@ export interface Redline {
   rationale: string;
   playbookReference?: string;
   agentStepId: string;
+}
+
+export interface ContractParagraph {
+  id: string;
+  section: string;
+  heading: string;
+  text: string;
+  isFlagged: boolean;
+  redlineId?: string;
+  severity?: RedlineSeverity;
 }
 
 export const mockContractMeta = {
@@ -189,7 +205,7 @@ export const mockRedlines: Redline[] = [
   },
 ];
 
-export const mockAgentSteps: AgentStep[] = [
+const baseAgentSteps: AgentStep[] = [
   {
     id: "step_1",
     index: 1,
@@ -232,6 +248,7 @@ export const mockAgentSteps: AgentStep[] = [
     },
     timestamp: "2026-08-11T14:02:01.114Z",
     durationMs: 842,
+    confidence: 0.98,
   },
   {
     id: "step_2",
@@ -284,6 +301,7 @@ export const mockAgentSteps: AgentStep[] = [
     },
     timestamp: "2026-08-11T14:02:02.201Z",
     durationMs: 1310,
+    confidence: 0.94,
   },
   {
     id: "step_3",
@@ -296,6 +314,7 @@ export const mockAgentSteps: AgentStep[] = [
       "Liability, indemnification, termination, governing law, data protection, and IP assignment are the clauses most likely to deviate from playbook-v4.2-vendor-msa based on prior review patterns. Deprioritizing boilerplate sections (notices, severability, entire agreement) that rarely carry negotiated risk.",
     timestamp: "2026-08-11T14:02:04.002Z",
     durationMs: 96,
+    confidence: 0.88,
   },
   {
     id: "step_4",
@@ -352,6 +371,7 @@ export const mockAgentSteps: AgentStep[] = [
     },
     timestamp: "2026-08-11T14:02:04.301Z",
     durationMs: 415,
+    confidence: 0.96,
   },
   {
     id: "step_5",
@@ -412,70 +432,251 @@ export const mockAgentSteps: AgentStep[] = [
     ],
     timestamp: "2026-08-11T14:02:05.020Z",
     durationMs: 2894,
+    confidence: 0.91,
   },
-  {
-    id: "step_6",
-    index: 6,
-    type: "tool_call",
-    status: "error",
-    agent: "contracts-review-agent",
-    title: "Cross-check counterparty entity against sanctions list",
-    thought:
-      "Running a standard compliance check on the counterparty entity before finalizing the review; the screening service timed out and will need a retry outside this pass.",
-    toolCall: {
-      requestId: "req_006a",
-      server: "compliance-screening",
-      toolName: "mcp__compliance-screening__screen_entity",
-      description:
-        "Screens a legal entity name against sanctions, watchlist, and adverse-media sources.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          entityName: { type: "string", description: "Legal name of the entity to screen." },
-          jurisdiction: { type: "string", description: "ISO country code of the entity's primary jurisdiction." },
-        },
-        required: ["entityName"],
-      },
-      arguments: {
-        entityName: "Northwind Logistics, Inc.",
-        jurisdiction: "US",
-      },
-      result: {
-        error: "GatewayTimeout",
-        message: "Screening provider did not respond within 8000ms.",
-      },
-      status: "error",
-      latencyMs: 8021,
-      startedAt: "2026-08-11T14:02:08.100Z",
-      completedAt: "2026-08-11T14:02:16.121Z",
+];
+
+const sanctionsScreeningInputSchema = {
+  type: "object" as const,
+  properties: {
+    entityName: { type: "string" as const, description: "Legal name of the entity to screen." },
+    jurisdiction: {
+      type: "string" as const,
+      description: "ISO country code of the entity's primary jurisdiction.",
     },
-    timestamp: "2026-08-11T14:02:08.100Z",
-    durationMs: 8021,
+  },
+  required: ["entityName"],
+};
+
+const redlineSummaryIds = [
+  "rl_liability_cap",
+  "rl_indemnification_scope",
+  "rl_auto_renewal_notice",
+  "rl_governing_law_venue",
+  "rl_subprocessor_flowdown",
+  "rl_ip_assignment_carveout",
+];
+
+const failedStep6: AgentStep = {
+  id: "step_6",
+  index: 6,
+  type: "tool_call",
+  status: "error",
+  agent: "contracts-review-agent",
+  title: "Cross-check counterparty entity against sanctions list",
+  thought:
+    "Running a standard compliance check on the counterparty entity before finalizing the review; the screening service timed out and will need a retry outside this pass.",
+  toolCall: {
+    requestId: "req_006a",
+    server: "compliance-screening",
+    toolName: "mcp__compliance-screening__screen_entity",
+    description:
+      "Screens a legal entity name against sanctions, watchlist, and adverse-media sources.",
+    inputSchema: sanctionsScreeningInputSchema,
+    arguments: {
+      entityName: "Northwind Logistics, Inc.",
+      jurisdiction: "US",
+    },
+    result: {
+      error: "GatewayTimeout",
+      message: "Screening provider did not respond within 8000ms.",
+    },
+    status: "error",
+    latencyMs: 8021,
+    startedAt: "2026-08-11T14:02:08.100Z",
+    completedAt: "2026-08-11T14:02:16.121Z",
+  },
+  timestamp: "2026-08-11T14:02:08.100Z",
+  durationMs: 8021,
+  confidence: 0.42,
+};
+
+const failedStep7: AgentStep = {
+  id: "step_7",
+  index: 7,
+  type: "summary",
+  status: "success",
+  agent: "contracts-review-agent",
+  title: "Summarize review pass",
+  thought:
+    "Six redlines proposed across liability, indemnification, termination, governing law, data protection, and IP; one critical (liability cap). Sanctions screening timed out (GatewayTimeout) and should be re-run before final sign-off.",
+  redlineIds: redlineSummaryIds,
+  timestamp: "2026-08-11T14:02:16.400Z",
+  durationMs: 58,
+  confidence: 0.93,
+};
+
+const successfulStep6: AgentStep = {
+  id: "step_6",
+  index: 6,
+  type: "tool_call",
+  status: "completed",
+  agent: "contracts-review-agent",
+  title: "Cross-check counterparty entity against sanctions list",
+  thought:
+    "Running a standard compliance check on the counterparty entity before finalizing the review; screening completed cleanly with no matches.",
+  toolCall: {
+    requestId: "req_006a",
+    server: "compliance-screening",
+    toolName: "mcp__compliance-screening__screen_entity",
+    description:
+      "Screens a legal entity name against sanctions, watchlist, and adverse-media sources.",
+    inputSchema: sanctionsScreeningInputSchema,
+    arguments: {
+      entityName: "Northwind Logistics, Inc.",
+      jurisdiction: "US",
+    },
+    result: {
+      status: "CLEARED",
+      matchesFound: 0,
+      sanctionsListChecked: ["OFAC", "EU_Sanctions", "UN_Security_Council"],
+    },
+    status: "success",
+    latencyMs: 340,
+    startedAt: "2026-08-11T14:02:08.100Z",
+    completedAt: "2026-08-11T14:02:08.440Z",
+  },
+  timestamp: "2026-08-11T14:02:08.100Z",
+  durationMs: 340,
+  confidence: 0.98,
+};
+
+const successfulStep7: AgentStep = {
+  id: "step_7",
+  index: 7,
+  type: "summary",
+  status: "success",
+  agent: "contracts-review-agent",
+  title: "Summarize review pass",
+  thought:
+    "Six redlines proposed across liability, indemnification, termination, governing law, data protection, and IP; one critical (liability cap). Sanctions screening completed with no matches — counterparty is cleared across OFAC, EU, and UN Security Council lists.",
+  redlineIds: redlineSummaryIds,
+  timestamp: "2026-08-11T14:02:08.500Z",
+  durationMs: 55,
+  confidence: 0.97,
+};
+
+export const failedAgentSteps: AgentStep[] = [
+  ...baseAgentSteps,
+  failedStep6,
+  failedStep7,
+];
+
+export const successfulAgentSteps: AgentStep[] = [
+  ...baseAgentSteps,
+  successfulStep6,
+  successfulStep7,
+];
+
+export const mockContractParagraphs: ContractParagraph[] = [
+  {
+    id: "para_preamble",
+    section: "",
+    heading: "",
+    text: 'This Master Services Agreement ("Agreement") is entered into as of September 1, 2026 (the "Effective Date"), by and between Acme Corp., a Delaware corporation ("Customer"), and Northwind Logistics, Inc., a Delaware corporation ("Vendor").',
+    isFlagged: false,
   },
   {
-    id: "step_7",
-    index: 7,
-    type: "summary",
-    status: "success",
-    agent: "contracts-review-agent",
-    title: "Summarize review pass",
-    thought:
-      "Six redlines proposed across liability, indemnification, termination, governing law, data protection, and IP; one critical (liability cap). Sanctions screening failed and should be re-run before final sign-off.",
-    redlineIds: [
-      "rl_liability_cap",
-      "rl_indemnification_scope",
-      "rl_auto_renewal_notice",
-      "rl_governing_law_venue",
-      "rl_subprocessor_flowdown",
-      "rl_ip_assignment_carveout",
-    ],
-    timestamp: "2026-08-11T14:02:16.400Z",
-    durationMs: 58,
+    id: "para_1",
+    section: "1.",
+    heading: "Definitions",
+    text: 'Capitalized terms used but not otherwise defined in this Agreement shall have the meanings set forth in the applicable Statement of Work. "Confidential Information" means any non-public information disclosed by either party that is designated as confidential or that reasonably should be understood to be confidential given the nature of the information.',
+    isFlagged: false,
+  },
+  {
+    id: "para_2",
+    section: "2.",
+    heading: "Services",
+    text: "Vendor shall provide the services described in one or more Statements of Work executed under this Agreement (each, a \"SOW\"). Each SOW shall reference this Agreement and, upon execution, be incorporated herein by reference.",
+    isFlagged: false,
+  },
+  {
+    id: "para_3",
+    section: "3.",
+    heading: "Fees and Payment",
+    text: "Customer shall pay all fees set forth in the applicable SOW within thirty (30) days of receipt of a correct invoice. Undisputed amounts not paid when due shall accrue interest at the lesser of 1.5% per month or the maximum rate permitted by law.",
+    isFlagged: false,
+  },
+  {
+    id: "para_7",
+    section: "7.",
+    heading: "Confidentiality",
+    text: "Each party agrees to protect the other party's Confidential Information using the same degree of care it uses to protect its own confidential information of similar nature, but in no event less than reasonable care, and shall not disclose such Confidential Information to any third party except as permitted under this Agreement.",
+    isFlagged: false,
+  },
+  {
+    id: "para_8_1",
+    section: "8.1",
+    heading: "Limitation of Liability",
+    text: "IN NO EVENT SHALL EITHER PARTY'S AGGREGATE LIABILITY UNDER THIS AGREEMENT EXCEED THE FEES PAID BY CUSTOMER IN THE ONE (1) MONTH PRIOR TO THE EVENT GIVING RISE TO THE CLAIM.",
+    isFlagged: true,
+    redlineId: "rl_liability_cap",
+    severity: "critical",
+  },
+  {
+    id: "para_9_3",
+    section: "9.3",
+    heading: "Indemnification by Vendor",
+    text: "Vendor shall indemnify Customer against third-party claims arising solely from Vendor's breach of Section 7 (Confidentiality).",
+    isFlagged: true,
+    redlineId: "rl_indemnification_scope",
+    severity: "high",
+  },
+  {
+    id: "para_10_6",
+    section: "10.6",
+    heading: "Data Protection - Sub-processors",
+    text: "Vendor may engage sub-processors to perform its obligations under this Agreement without prior notice to Customer.",
+    isFlagged: true,
+    redlineId: "rl_subprocessor_flowdown",
+    severity: "high",
+  },
+  {
+    id: "para_11_1",
+    section: "11.1",
+    heading: "Intellectual Property Ownership",
+    text: "All work product created by Vendor in connection with this Agreement shall be owned exclusively by Vendor.",
+    isFlagged: true,
+    redlineId: "rl_ip_assignment_carveout",
+    severity: "low",
+  },
+  {
+    id: "para_12_2",
+    section: "12.2",
+    heading: "Term and Auto-Renewal",
+    text: "This Agreement shall automatically renew for successive one (1) year terms unless either party provides written notice of non-renewal at least fifteen (15) days prior to the end of the then-current term.",
+    isFlagged: true,
+    redlineId: "rl_auto_renewal_notice",
+    severity: "medium",
+  },
+  {
+    id: "para_13",
+    section: "13.",
+    heading: "Notices",
+    text: "All notices under this Agreement shall be in writing and delivered by email with confirmation of receipt, or by certified mail, to the addresses set forth in the applicable SOW.",
+    isFlagged: false,
+  },
+  {
+    id: "para_14",
+    section: "14.",
+    heading: "Severability",
+    text: "If any provision of this Agreement is held invalid or unenforceable, the remainder of the Agreement shall continue in full force and effect, and the invalid provision shall be modified to the minimum extent necessary to make it enforceable.",
+    isFlagged: false,
+  },
+  {
+    id: "para_15_4",
+    section: "15.4",
+    heading: "Governing Law and Venue",
+    text: "This Agreement shall be governed by the laws of the State of Delaware, and the parties consent to the exclusive jurisdiction of the state and federal courts located in New Castle County, Delaware.",
+    isFlagged: true,
+    redlineId: "rl_governing_law_venue",
+    severity: "medium",
   },
 ];
 
 export const mockAudit = {
   meta: mockContractMeta,
-  steps: mockAgentSteps,
+  steps: failedAgentSteps,
   redlines: mockRedlines,
+  paragraphs: mockContractParagraphs,
 };
