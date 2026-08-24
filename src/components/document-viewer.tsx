@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileUp } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -55,9 +55,13 @@ const approvedBadge =
 
 interface DocumentViewerProps {
   redlineStatuses: Record<string, RedlineStatus>;
+  uploadedFileName?: string;
 }
 
-export function DocumentViewer({ redlineStatuses }: DocumentViewerProps) {
+export function DocumentViewer({
+  redlineStatuses,
+  uploadedFileName,
+}: DocumentViewerProps) {
   return (
     <Card className="h-full gap-0 rounded-none border-0 py-0 ring-0">
       <CardHeader className="border-b border-border py-4">
@@ -66,6 +70,12 @@ export function DocumentViewer({ redlineStatuses }: DocumentViewerProps) {
           {mockContractMeta.counterparty} · Effective{" "}
           {mockContractMeta.effectiveDate}
         </CardDescription>
+        {uploadedFileName && (
+          <Badge variant="outline" className="mt-2 w-fit gap-1">
+            <FileUp className="size-3" />
+            Source: {uploadedFileName}
+          </Badge>
+        )}
       </CardHeader>
       <CardContent className="min-h-0 flex-1 p-0">
         <ScrollArea className="h-full">

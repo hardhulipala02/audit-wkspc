@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Play, RotateCcw } from "lucide-react";
+import { Play, RotateCcw, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { AgentTracePanel } from "@/components/agent-trace-panel";
@@ -19,6 +19,8 @@ import {
 import { cn } from "@/lib/utils";
 
 const STREAM_INTERVAL_MS = 800;
+const ACCEPTED_DOCUMENT_TYPES = ".pdf,.doc,.docx,.txt";
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 type RunScenario = "failed" | "successful";
 
@@ -111,6 +113,8 @@ export default function Home() {
     Record<string, RedlineStatus>
   >(() => Object.fromEntries(mockRedlines.map((r) => [r.id, r.status])));
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
 
   const activeSteps = SCENARIO_STEPS[scenario];
 
@@ -162,6 +166,31 @@ export default function Home() {
     });
   }, []);
 
+  const handleUploadClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileSelected = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+
+      if (file.size > MAX_UPLOAD_BYTES) {
+        toast.error("Document too large", {
+          description: "Please upload a file under 25MB.",
+        });
+        return;
+      }
+
+      setUploadedFile(file);
+      toast.success(`Uploaded ${file.name}`, {
+        description: "Document is ready for review. Run analysis to trace the agent.",
+      });
+    },
+    []
+  );
+
   useEffect(() => clearStreamInterval, [clearStreamInterval]);
 
   const executionStatus = getExecutionStatus(isStreaming, currentStepIndex, activeSteps);
@@ -174,6 +203,17 @@ export default function Home() {
           Legal Trace &amp; Audit
         </h1>
         <div className="flex items-center gap-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ACCEPTED_DOCUMENT_TYPES}
+            className="hidden"
+            onChange={handleFileSelected}
+          />
+          <Button size="sm" variant="outline" onClick={handleUploadClick}>
+            <Upload />
+            {uploadedFile ? "Replace Document" : "Upload Document"}
+          </Button>
           <ScenarioToggle scenario={scenario} onChange={handleScenarioChange} />
           <Button
             size="sm"
@@ -202,7 +242,10 @@ export default function Home() {
 
       <main className="flex min-h-0 flex-1">
         <section className="flex min-w-0 flex-[3] flex-col overflow-hidden border-r border-border">
-          <DocumentViewer redlineStatuses={redlineStatuses} />
+          <DocumentViewer
+            redlineStatuses={redlineStatuses}
+            uploadedFileName={uploadedFile?.name}
+          />
         </section>
         <aside className="flex min-w-0 flex-[2] flex-col overflow-hidden">
           <AgentTracePanel
