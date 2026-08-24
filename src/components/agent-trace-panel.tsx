@@ -11,6 +11,7 @@ import {
   FileEdit,
   Loader2,
   Wrench,
+  X,
   XCircle,
   type LucideIcon,
 } from "lucide-react";
@@ -179,15 +180,19 @@ function RedlineActionCard({
   redlineId,
   status,
   onApprove,
+  onReject,
 }: {
   redlineId: string;
   status: RedlineStatus;
   onApprove: (redlineId: string) => void;
+  onReject: (redlineId: string) => void;
 }) {
   const redline = mockRedlines.find((r) => r.id === redlineId);
   if (!redline) return null;
 
   const isApproved = status === "accepted";
+  const isRejected = status === "rejected";
+  const isResolved = isApproved || isRejected;
 
   return (
     <div className="flex flex-col gap-2 rounded-md border border-border p-3">
@@ -205,11 +210,26 @@ function RedlineActionCard({
       <p className="text-xs leading-relaxed text-muted-foreground">
         {redline.rationale}
       </p>
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <Button
+          size="xs"
+          variant={isRejected ? "secondary" : "outline"}
+          disabled={isResolved}
+          onClick={() => onReject(redline.id)}
+        >
+          {isRejected ? (
+            <>
+              <X className="size-3" />
+              Rejected
+            </>
+          ) : (
+            "Reject"
+          )}
+        </Button>
         <Button
           size="xs"
           variant={isApproved ? "secondary" : "outline"}
-          disabled={isApproved}
+          disabled={isResolved}
           onClick={() => onApprove(redline.id)}
         >
           {isApproved ? (
@@ -232,12 +252,14 @@ function AgentStepCard({
   isActive,
   redlineStatuses,
   onApproveRedline,
+  onRejectRedline,
 }: {
   step: AgentStep;
   isLast: boolean;
   isActive: boolean;
   redlineStatuses: Record<string, RedlineStatus>;
   onApproveRedline: (redlineId: string) => void;
+  onRejectRedline: (redlineId: string) => void;
 }) {
   const StatusIcon = statusIcon[step.status];
   const TypeIcon = typeMeta[step.type].icon;
@@ -331,6 +353,7 @@ function AgentStepCard({
                   redlineId={redlineId}
                   status={redlineStatuses[redlineId]}
                   onApprove={onApproveRedline}
+                  onReject={onRejectRedline}
                 />
               ))}
             </div>
@@ -347,6 +370,7 @@ interface AgentTracePanelProps {
   isStreaming: boolean;
   redlineStatuses: Record<string, RedlineStatus>;
   onApproveRedline: (redlineId: string) => void;
+  onRejectRedline: (redlineId: string) => void;
 }
 
 export function AgentTracePanel({
@@ -355,6 +379,7 @@ export function AgentTracePanel({
   isStreaming,
   redlineStatuses,
   onApproveRedline,
+  onRejectRedline,
 }: AgentTracePanelProps) {
   const visibleSteps = steps.slice(0, currentStepIndex + 1);
 
@@ -392,6 +417,7 @@ export function AgentTracePanel({
                     isActive={isStreaming && index === visibleSteps.length - 1}
                     redlineStatuses={redlineStatuses}
                     onApproveRedline={onApproveRedline}
+                    onRejectRedline={onRejectRedline}
                   />
                 </motion.div>
               ))}

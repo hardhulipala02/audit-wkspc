@@ -166,6 +166,16 @@ export default function Home() {
     });
   }, []);
 
+  const handleRejectRedline = useCallback((redlineId: string) => {
+    const redline = mockRedlines.find((r) => r.id === redlineId);
+    if (!redline) return;
+
+    setRedlineStatuses((prev) => ({ ...prev, [redlineId]: "rejected" }));
+    toast(`Redline rejected — ${redline.clauseSection} ${redline.clauseTitle}`, {
+      description: "Original clause language kept in the document viewer.",
+    });
+  }, []);
+
   const handleUploadClick = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
@@ -254,6 +264,7 @@ export default function Home() {
             isStreaming={isStreaming}
             redlineStatuses={redlineStatuses}
             onApproveRedline={handleApproveRedline}
+            onRejectRedline={handleRejectRedline}
           />
         </aside>
       </main>
