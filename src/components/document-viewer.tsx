@@ -53,6 +53,8 @@ const approvedHighlight =
 const approvedBadge =
   "border-emerald-300 bg-emerald-100 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300";
 
+const SEVERITY_ORDER: RedlineSeverity[] = ["critical", "high", "medium", "low"];
+
 interface DocumentViewerProps {
   redlineStatuses: Record<string, RedlineStatus>;
   uploadedFileName?: string;
@@ -62,6 +64,17 @@ export function DocumentViewer({
   redlineStatuses,
   uploadedFileName,
 }: DocumentViewerProps) {
+  const openCountsBySeverity = mockRedlines.reduce(
+    (counts, redline) => {
+      const status = redlineStatuses[redline.id];
+      if (status === "pending" || status === "needs-review") {
+        counts[redline.severity] += 1;
+      }
+      return counts;
+    },
+    { critical: 0, high: 0, medium: 0, low: 0 } as Record<RedlineSeverity, number>
+  );
+
   return (
     <Card className="h-full gap-0 rounded-none border-0 py-0 ring-0">
       <CardHeader className="border-b border-border py-4">
@@ -70,12 +83,26 @@ export function DocumentViewer({
           {mockContractMeta.counterparty} · Effective{" "}
           {mockContractMeta.effectiveDate}
         </CardDescription>
-        {uploadedFileName && (
-          <Badge variant="outline" className="mt-2 w-fit gap-1">
-            <FileUp className="size-3" />
-            Source: {uploadedFileName}
-          </Badge>
-        )}
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {uploadedFileName && (
+            <Badge variant="outline" className="w-fit gap-1">
+              <FileUp className="size-3" />
+              Source: {uploadedFileName}
+            </Badge>
+          )}
+          {SEVERITY_ORDER.filter((severity) => openCountsBySeverity[severity] > 0).map(
+            (severity) => (
+              <Badge
+                key={severity}
+                variant="outline"
+                className={cn("gap-1", severityStyles[severity].badge)}
+              >
+                <AlertTriangle className="size-3" />
+                {openCountsBySeverity[severity]} {severityStyles[severity].label}
+              </Badge>
+            )
+          )}
+        </div>
       </CardHeader>
       <CardContent className="min-h-0 flex-1 p-0">
         <ScrollArea className="h-full">
